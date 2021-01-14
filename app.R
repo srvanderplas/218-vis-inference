@@ -1,22 +1,15 @@
-#
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
-#
-
 library(shiny)
 library(tidyverse)
 library(nullabor)
+library(shinyWidgets)
 
 load("isi_data.Rdata")
 
-scenario_choices <- c("One Group, Categorical", "One Group, Quantitative", 
+scenario_choices <- c("Predefined Scenario", 
+                      "One Group, Categorical", "One Group, Quantitative", 
                       #"Two Groups, Categorical", "Two Groups, Quantitative", 
                       #"Matched Pairs", "Two Quantitative Variables"
-                      "Predefined Scenario"
+                      NULL
                       )
 dataset_choices <- c()
 
@@ -24,39 +17,48 @@ default_quant_data <- rnorm(30, mean = 60, sd = 5) %>%
   round() %>%
   paste(collapse = "\n")
 
-ui <- fluidPage(
-  "Visual Intuition",
-  fluidRow(
-    column(
-      width = 3,
-      selectInput("type", "Select Data Type", choices = scenario_choices, selected = 1),
-      conditionalPanel(
-        "input.type=='One Group, Categorical'",
-        numericInput("successes", "# Successes", value = 0, min = 0, max = Inf, step = 1),
-        numericInput("total", "Total Trials", value = 10, min = 1, max = Inf, step = 1),
+ui <- navbarPage(
+  "Stat 218",
+  tabPanel(
+    "Visual Intuition", 
+    fluidRow(
+      column(
+        width = 3,
+        selectInput("type", "Select Data Type", choices = scenario_choices, selected = 1),
+        conditionalPanel(
+          "input.type=='One Group, Categorical'",
+          numericInput("successes", "# Successes", value = 0, min = 0, max = Inf, step = 1),
+          numericInput("total", "Total Trials", value = 10, min = 1, max = Inf, step = 1),
+          hr(),
+          numericInput("pi", "Population proportion π = ", value = .5, min = 0, max = 1, step = .01)
+        ), 
+        conditionalPanel(
+          "input.type=='One Group, Quantitative'",
+          textAreaInput("sample", "Sample observations (one per line, must be a number)", value = default_quant_data),
+          hr(),
+          numericInput("mu", "Population Mean μ = ", value = 55, min = -Inf, max = Inf, step = .1),
+          numericInput("sigma", "Population sd σ =", value = 5, min = .1, max = Inf, step = .1),
+          p("You can get these from the one-mean app if necessary"),
+          hr(),
+          radioButtons("geom1quant", "Display Type", 
+                       choiceNames = c("Histogram", "Density"),
+                       choiceValues = c("geom_histogram", "geom_density"))
+        ), 
+        conditionalPanel(
+          "input.type=='Predefined Scenario'",
+          p("This shows the Old Faithful Eruptions data in one panel, and distributions with similar mean and variance in the other panels. Can you spot the eruptions data?")
+        ),
         hr(),
-        numericInput("pi", "Population proportion π = ", value = .5, min = 0, max = 1, step = .01)
-      ), 
-      conditionalPanel(
-        "input.type=='One Group, Quantitative'",
-        textAreaInput("sample", "Sample observations (one per line, must be a number)", value = default_quant_data),
-        hr(),
-        numericInput("mu", "Population Mean μ = ", value = 55, min = -Inf, max = Inf, step = .1),
-        numericInput("sigma", "Population sd σ =", value = 5, min = .1, max = Inf, step = .1),
-        p("You can get these from the one-mean app if necessary"),
-        hr(),
-        radioButtons("geom1quant", "Display Type", 
-                     choiceNames = c("Histogram", "Density"),
-                     choiceValues = c("geom_histogram", "geom_density"))
-      ), 
-      conditionalPanel(
-        "input.type=='Predefined Scenario'",
-        p("This shows the Old Faithful Eruptions data in one panel, and distributions with similar mean and variance in the other panels. Can you spot the eruptions data?")
+        switchInput(inputId = "showanswer", label = "Show me the correct panel")
+      ),
+      column(
+        width = 9,
+        plotOutput("lineup"),
+        conditionalPanel(
+          'input.showanswer',
+          textOutput("answer")
+        )
       )
-    ),
-    column(
-      width = 9,
-      plotOutput("lineup")
     )
   )
 )
@@ -94,6 +96,14 @@ server <- shinyServer(
     })
     
     target_location <- reactiveVal()
+    
+    observeEvent(
+      list(input$mu, input$sigma, input$pi, input$total, input$sample, input$successes, input$type),
+      updateSwitchInput(
+        session = session,
+        inputId = "showanswer",
+        value = FALSE
+      ))
     
     lineup_data <- reactive({
       # Depend on all inputs
@@ -133,6 +143,10 @@ server <- shinyServer(
       print(head(data))
       
       data
+    })
+    
+    output$answer <- renderText({
+      sprintf("The target panel is panel %d", target_location())
     })
     
     output$lineup <- renderPlot({
